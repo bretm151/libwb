@@ -1,3 +1,4 @@
+// MP 0 -- query device
 #include	<wb.h>
 
 //@@ The purpose of this code is to become familiar with the submission 
@@ -38,7 +39,6 @@ int main(int argc, char ** argv) {
         wbLog(TRACE, " Maximum global memory size: ", deviceProp.totalGlobalMem);
         wbLog(TRACE, " Maximum constant memory size: ", deviceProp.totalConstMem);
         wbLog(TRACE, " Maximum shared memory size per block: ", deviceProp.sharedMemPerBlock);
-		wbLog(TRACE, " Maximum threads per block: ", deviceProp.maxThreadsPerBlock);
         wbLog(TRACE, " Maximum block dimensions: ", deviceProp.maxThreadsDim[0], " x ",
                                                     deviceProp.maxThreadsDim[1], " x ",
                                                     deviceProp.maxThreadsDim[2]);
@@ -52,3 +52,4 @@ int main(int argc, char ** argv) {
 
     return 0;
 }
+
