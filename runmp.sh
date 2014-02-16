@@ -1,10 +1,11 @@
-if [ $# -ne 1 ]
+if [ $# -lt 1 ]
 then
     echo "usage: $0 <mp number>" 1>&2
     exit 1
 fi
 
 MP=$1
+shift
 TARGET=build/Debug/MP${MP}.exe
 
 if [ ! -x ${TARGET} ]
@@ -37,7 +38,14 @@ case ${MP} in
         ;;
 esac
 
-for dataset in ${DATADIR}/*
+if [ $# -gt 0 ]
+then
+    DATASETS=`echo $* | sed -e "s:\([^ ]*\):${DATADIR}/\1:g"`
+else
+    DATASETS=${DATADIR}/*
+fi
+
+for dataset in ${DATASETS}
 do
     echo "executing with dataset ${dataset}"
     inputs=`ls ${dataset}/input* 2>/dev/null | xargs echo | sed -e "s/  */,/g"`

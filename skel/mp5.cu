@@ -60,7 +60,6 @@ __global__ void total(float * input, float * output, int len) {
     {
         output[blockIdx.x] = partialSum[0];
     }
-
 }
 
 int main(int argc, char ** argv) {
