@@ -28,7 +28,7 @@ case ${MP} in
     2|3)
         TYPE=matrix
         ;;
-    4)
+    4|7)
         TYPE=image
         ;;
     *)
