@@ -100,9 +100,8 @@ castToFloat(const PUCHAR input, float *output, int height, int width, int channe
 __global__
 void gpu_castToUChar(const float *floatImage, PUCHAR ucharImage, int height, int width, int channels)
 {
-	const int ty = threadIdx.y;
 	const int tx = threadIdx.x;
-    const int idx = (blockIdx.y + ty)*width + blockIdx.x*blockDim.x + tx;
+    const int idx = blockIdx.x*blockDim.x + tx;
 
     if (idx < height*width)
     {
@@ -117,8 +116,8 @@ void gpu_castToUChar(const float *floatImage, PUCHAR ucharImage, int height, int
 cudaError_t
 castToUChar(const float *floatImage, PUCHAR ucharImage, int height, int width, int channels)
 {
-    dim3 dimBlock(1, 1, 1);
-    dim3 dimGrid(1+(width-1)/dimBlock.x, 1+(height-1)/dimBlock.y, 1);
+    dim3 dimBlock(1024, 1, 1);
+    dim3 dimGrid(1+(height*width-1)/dimBlock.x, 1, 1);
 
     float *gpu_floatImage=NULL;
     PUCHAR gpu_ucharImage=NULL;
@@ -284,7 +283,7 @@ __global__
 void gpu_computeHistogram(const PUCHAR grayImage, PUINT histogram, int height, int width)
 {
 	const int tx = threadIdx.x;
-    const int idx = blockIdx.x*blockDim.x + tx;
+    int idx = blockIdx.x*blockDim.x + tx;
     const int stride = blockDim.x * gridDim.x;
 
     __shared__ UINT privateHistogram[HISTOGRAM_LENGTH];
