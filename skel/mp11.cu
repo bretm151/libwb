@@ -1,7 +1,6 @@
 // Histogram Equalization
 
 #include    <wb.h>
-#include <cuda.h>
 
 #define HISTOGRAM_LENGTH 256
 
@@ -39,6 +38,47 @@ castToUChar(const float *floatImage, PUCHAR ucharImage, int width, int height, i
     return cudaSuccess;
 }
 
+#else
+
+__global__
+void gpu_castToUChar(const float *floatImage, PUCHAR ucharImage, int width, int height, int channels)
+{
+	const int tx  = threadIdx.x;
+    const int idx = blockIdx.x*blockDim.x + tx;
+
+    if (idx < width*height)
+    {
+        for(int i=0;i<channels;i++)
+        {
+            int index = idx + i*width*height;
+            ucharImage[index] = (UCHAR)(255.0f * floatImage[index]);
+        }
+    }
+}
+
+cudaError_t
+castToUChar(const float *floatImage, PUCHAR ucharImage, int width, int height, int channels)
+{
+    dim3 dimBlock(1024, 1, 1);
+    dim3 dimGrid(1+(width*height-1)/dimBlock.x, 1, 1);
+
+    float *gpu_floatImage=NULL;
+    PUCHAR gpu_ucharImage=NULL;
+
+    wbCheck(cudaHostGetDevicePointer((void **)&gpu_floatImage, (void *)floatImage, 0));
+    wbCheck(cudaHostGetDevicePointer((void **)&gpu_ucharImage, (void *)ucharImage, 0));
+
+    gpu_castToUChar<<<dimGrid, dimBlock>>>(gpu_floatImage, gpu_ucharImage, width, height, channels);
+
+    wbCheck(cudaThreadSynchronize());
+
+    return cudaSuccess;
+}
+
+#endif
+
+#if defined(RUN_ON_HOST)
+
 cudaError_t
 convertRGBToGray(const PUCHAR rgbImage, PUCHAR grayImage, int width, int height, int channels)
 {
@@ -61,6 +101,51 @@ convertRGBToGray(const PUCHAR rgbImage, PUCHAR grayImage, int width, int height,
     return cudaSuccess;
 }
 
+#else
+
+__global__
+void gpu_convertRGBToGray(const PUCHAR rgbImage, PUCHAR grayImage, int width, int height, int channels)
+{
+	const int tx = threadIdx.x;
+    const int idx = blockIdx.x*blockDim.x + tx;
+
+    if (idx < width*height)
+    {
+        int offset = idx*channels;
+
+        float r = rgbImage[offset + 0];
+        float g = rgbImage[offset + 1];
+        float b = rgbImage[offset + 2];
+
+        grayImage[idx] = (UCHAR)(r*WEIGHT_R + g*WEIGHT_G + b*WEIGHT_B);
+    }
+}
+
+cudaError_t
+convertRGBToGray(const PUCHAR rgbImage, PUCHAR grayImage, int width, int height, int channels)
+{
+    dim3 dimBlock(1024, 1, 1);
+    dim3 dimGrid(1+(width*height-1)/dimBlock.x, 1, 1);
+
+    PUCHAR gpu_rgbImage=NULL;
+    PUCHAR gpu_grayImage=NULL;
+
+    assert(channels == 3);
+
+    wbCheck(cudaHostGetDevicePointer((void **)&gpu_rgbImage, (void *)rgbImage, 0));
+    wbCheck(cudaHostGetDevicePointer((void **)&gpu_grayImage, (void *)grayImage, 0));
+
+    gpu_convertRGBToGray<<<dimGrid, dimBlock>>>(gpu_rgbImage, gpu_grayImage, width, height, channels);
+
+    wbCheck(cudaThreadSynchronize());
+
+    return cudaSuccess;
+}
+
+#endif
+
+#if defined(RUN_ON_HOST)
+
 cudaError_t
 computeHistogram(const PUCHAR grayImage, PUINT histogram, int width, int height)
 {
@@ -77,120 +162,7 @@ computeHistogram(const PUCHAR grayImage, PUINT histogram, int width, int height)
     return cudaSuccess;
 }
 
-UCHAR
-clamp(const UCHAR x, const UCHAR start, const UCHAR end)
-{
-    return min(max(x,start), end);
-}
-
-UCHAR
-correctColor(UCHAR val, float *cdf)
-{
-    return clamp((UCHAR)(255*(cdf[val]-cdf[0])/(1-cdf[0])), 0, 255);
-}
-
-cudaError_t
-correctColors(PUCHAR ucharImage, float *cdf, int width, int height, int channels)
-{
-    for(int i=0;i<width*height*channels;i++)
-    {
-        ucharImage[i] = correctColor(ucharImage[i], cdf);
-    }
-
-    return cudaSuccess;
-}
-
-cudaError_t
-castToFloat(const PUCHAR input, float *output, int width, int height, int channels)
-{
-    for(int i=0;i<width*height*channels;i++)
-    {
-        output[i] = (float)(input[i]/255.0f);
-    }
-
-    return cudaSuccess;
-}
-
 #else
-
-__global__
-void gpu_castToUChar(const float *floatImage, PUCHAR ucharImage, int width, int height, int channels)
-{
-	const int tx = threadIdx.x;
-	const int ty = threadIdx.y;
-    const int idx = (blockIdx.y*blockDim.y + ty)*width + blockIdx.x*blockDim.x + tx;
-
-    if (idx < width*height)
-    {
-        for(int i=0;i<channels;i++)
-        {
-            int index = idx*3 + i;
-            ucharImage[index] = (UCHAR)(255.0f * floatImage[index]);
-        }
-    }
-}
-
-cudaError_t
-castToUChar(const float *floatImage, PUCHAR ucharImage, int width, int height, int channels)
-{
-    dim3 dimBlock(32, 32, 1);
-    dim3 dimGrid(1+(width-1)/dimBlock.x, 1+(height-1)/dimBlock.y, 1);
-
-    float *gpu_floatImage=NULL;
-    PUCHAR gpu_ucharImage=NULL;
-
-    wbCheck(cudaHostGetDevicePointer((void **)&gpu_floatImage, (void *)floatImage, 0));
-    wbCheck(cudaHostGetDevicePointer((void **)&gpu_ucharImage, (void *)ucharImage, 0));
-
-    gpu_castToUChar<<<dimGrid, dimBlock>>>(gpu_floatImage, gpu_ucharImage, width, height, channels);
-
-    wbCheck(cudaThreadSynchronize());
-
-    return cudaSuccess;
-}
-
-__global__
-void gpu_convertRGBToGray(const PUCHAR rgbImage, PUCHAR grayImage, int width, int height, int channels)
-{
-	const int tx = threadIdx.x;
-	const int ty = threadIdx.y;
-
-    const int x = blockIdx.x*blockDim.x + tx;
-    const int y = blockIdx.y*blockDim.y + ty;
-
-    if (x < width && y < height)
-    {
-        const int idx = y*width + x;
-        int offset = idx*channels;
-
-        float r = rgbImage[offset + 0];
-        float g = rgbImage[offset + 1];
-        float b = rgbImage[offset + 2];
-
-        grayImage[idx] = (UCHAR)(r*WEIGHT_R + g*WEIGHT_G + b*WEIGHT_B);
-    }
-}
-
-cudaError_t
-convertRGBToGray(const PUCHAR rgbImage, PUCHAR grayImage, int width, int height, int channels)
-{
-    dim3 dimBlock(1, 1, 1);
-    dim3 dimGrid(1+(width-1)/dimBlock.x, 1+(height-1)/dimBlock.y, 1);
-
-    PUCHAR gpu_rgbImage=NULL;
-    PUCHAR gpu_grayImage=NULL;
-
-    assert(channels == 3);
-
-    wbCheck(cudaHostGetDevicePointer((void **)&gpu_rgbImage, (void *)rgbImage, 0));
-    wbCheck(cudaHostGetDevicePointer((void **)&gpu_grayImage, (void *)grayImage, 0));
-
-    gpu_convertRGBToGray<<<dimGrid, dimBlock>>>(gpu_rgbImage, gpu_grayImage, width, height, channels);
-
-    wbCheck(cudaThreadSynchronize());
-
-    return cudaSuccess;
-}
 
 __global__
 void gpu_computeHistogram(const PUCHAR grayImage, PUINT histogram, int width, int height)
@@ -226,7 +198,7 @@ cudaError_t
 computeHistogram(const PUCHAR grayImage, PUINT histogram, int width, int height)
 {
     dim3 dimBlock(1024, 1, 1);
-    dim3 dimGrid(1+(width+height-1)/dimBlock.x, 1, 1);
+    dim3 dimGrid(1+(width*height-1)/dimBlock.x, 1, 1);
 
     PUCHAR gpu_grayImage=NULL;
     PUINT  gpu_histogram=NULL;
@@ -241,6 +213,34 @@ computeHistogram(const PUCHAR grayImage, PUINT histogram, int width, int height)
     return cudaSuccess;
 }
 
+#endif
+
+#if defined(RUN_ON_HOST)
+
+UCHAR
+clamp(const UCHAR x, const UCHAR start, const UCHAR end)
+{
+    return min(max(x,start), end);
+}
+
+UCHAR
+correctColor(UCHAR val, float *cdf)
+{
+    return clamp((UCHAR)(255*(cdf[val]-cdf[0])/(1-cdf[0])), 0, 255);
+}
+
+cudaError_t
+correctColors(PUCHAR ucharImage, float *cdf, int width, int height, int channels)
+{
+    for(int i=0;i<width*height*channels;i++)
+    {
+        ucharImage[i] = correctColor(ucharImage[i], cdf);
+    }
+
+    return cudaSuccess;
+}
+
+#else
 __device__
 UCHAR
 clamp(const UCHAR x, const UCHAR start, const UCHAR end)
@@ -258,15 +258,14 @@ correctColor(UCHAR val, float *cdf)
 __global__
 void gpu_correctColors(PUCHAR ucharImage, float *cdf, int width, int height, int channels)
 {
-	const int ty = threadIdx.y;
 	const int tx = threadIdx.x;
-    const int idx = (blockIdx.y*blockDim.y + ty)*width + blockIdx.x*blockDim.x + tx;
+    const int idx = blockIdx.x*blockDim.x + tx;
 
     if (idx < width*height)
     {
         for(int i=0;i<channels;i++)
         {
-            int index = idx*3 + i;
+            int index = idx + i*width*height;
             ucharImage[index] = correctColor(ucharImage[index], cdf);
         }
     }
@@ -275,8 +274,8 @@ void gpu_correctColors(PUCHAR ucharImage, float *cdf, int width, int height, int
 cudaError_t
 correctColors(PUCHAR ucharImage, float *cdf, int width, int height, int channels)
 {
-    dim3 dimBlock(32, 32, 1);
-    dim3 dimGrid(1+(width-1)/dimBlock.x, 1+(height-1)/dimBlock.y, 1);
+    dim3 dimBlock(1024, 1, 1);
+    dim3 dimGrid(1+(width*height-1)/dimBlock.x, 1, 1);
 
     PUCHAR gpu_ucharImage=NULL;
     float *gpu_cdf=NULL;
@@ -291,18 +290,34 @@ correctColors(PUCHAR ucharImage, float *cdf, int width, int height, int channels
     return cudaSuccess;
 }
 
+#endif
+
+#if defined(RUN_ON_HOST)
+
+cudaError_t
+castToFloat(const PUCHAR input, float *output, int width, int height, int channels)
+{
+    for(int i=0;i<width*height*channels;i++)
+    {
+        output[i] = (float)(input[i]/255.0f);
+    }
+
+    return cudaSuccess;
+}
+
+#else
+
 __global__
 void gpu_castToFloat(const PUCHAR ucharImage, float *floatImage, int width, int height, int channels)
 {
-	const int ty = threadIdx.y;
 	const int tx = threadIdx.x;
-    const int idx = (blockIdx.y*blockDim.y + ty)*width + blockIdx.x*blockDim.x + tx;
+    const int idx = blockIdx.x*blockDim.x + tx;
 
     if (idx < width*height)
     {
         for(int i=0;i<channels;i++)
         {
-            int index = idx*3 + i;
+            int index = idx + i*width*height;
             floatImage[index] = (float)(ucharImage[index]/255.0f);
         }
     }
@@ -311,8 +326,8 @@ void gpu_castToFloat(const PUCHAR ucharImage, float *floatImage, int width, int 
 cudaError_t
 castToFloat(const PUCHAR ucharImage, float *floatImage, int width, int height, int channels)
 {
-    dim3 dimBlock(32, 32, 1);
-    dim3 dimGrid(1+(width-1)/dimBlock.x, 1+(height-1)/dimBlock.y, 1);
+    dim3 dimBlock(1024, 1, 1);
+    dim3 dimGrid(1+(width*height-1)/dimBlock.x, 1, 1);
 
     PUCHAR gpu_ucharImage=NULL;
     float *gpu_floatImage=NULL;
