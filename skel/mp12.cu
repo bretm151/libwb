@@ -1,7 +1,7 @@
 #include	<wb.h>
 
-#define CHUNK_SIZE  512
-#define BLOCK_SIZE   64
+#define CHUNK_SIZE   64
+#define BLOCK_SIZE   16
 #define N_STREAMS     4
 
 #define wbCheck(stmt) do {                                                    \
@@ -63,7 +63,7 @@ int main(int argc, char ** argv) {
 
     for(int i=0;i<N_STREAMS;i++)
     {
-        wbCheck(cudaStreamCreate(&stream[i]));
+        wbCheck(cudaStreamCreate(&streams[i]));
         wbCheck(cudaMalloc((void **)&deviceInputA[i], CHUNK_SIZE * sizeof(float)));
         wbCheck(cudaMalloc((void **)&deviceInputB[i], CHUNK_SIZE * sizeof(float)));
         wbCheck(cudaMalloc((void **)&deviceOutput[i], CHUNK_SIZE * sizeof(float)));
@@ -102,12 +102,12 @@ int main(int argc, char ** argv) {
             dim3 DimGrid(1 + (left-1)/BLOCK_SIZE, 1, 1);
             dim3 DimBlock(BLOCK_SIZE, 1, 1);
 
-            wbCheck(cudaMemcpyAsync(deviceInputA0, pinnedHostInput1+pos, left*sizeof(float), cudaMemcpyHostToDevice, streams[0]));
-            wbCheck(cudaMemcpyAsync(deviceInputB0, pinnedHostInput2+pos, left*sizeof(float), cudaMemcpyHostToDevice, streams[0]));
+            wbCheck(cudaMemcpyAsync(deviceInputA[0], pinnedHostInput1+pos, left*sizeof(float), cudaMemcpyHostToDevice, streams[0]));
+            wbCheck(cudaMemcpyAsync(deviceInputB[0], pinnedHostInput2+pos, left*sizeof(float), cudaMemcpyHostToDevice, streams[0]));
 
-            vecAdd<<<DimGrid, DimBlock, 0, streams[0]>>>(deviceInputA0, deviceInputB0, deviceOutput0, left);
+            vecAdd<<<DimGrid, DimBlock, 0, streams[0]>>>(deviceInputA[0], deviceInputB[0], deviceOutput[0], left);
 
-            wbCheck(cudaMemcpyAsync(pinnedHostOutput+pos, deviceOutput0, left*sizeof(float), cudaMemcpyDeviceToHost, streams[0]));
+            wbCheck(cudaMemcpyAsync(pinnedHostOutput+pos, deviceOutput[0], left*sizeof(float), cudaMemcpyDeviceToHost, streams[0]));
         }
     }
     else
@@ -127,7 +127,7 @@ int main(int argc, char ** argv) {
         cur++;
 
         // pipe fill 2
-        vecAdd<<<DimGrid, DimBlock, 0, streams[(cur-2)%N_STREAMS]>>>(deviceInputA0, deviceInputB0, deviceOutput0, CHUNK_SIZE);
+        vecAdd<<<DimGrid, DimBlock, 0, streams[(cur-2)%N_STREAMS]>>>(deviceInputA[(cur-2)%N_STREAMS], deviceInputB[(cur-2)%N_STREAMS], deviceOutput[(cur-2)%N_STREAMS], CHUNK_SIZE);
         wbCheck(cudaMemcpyAsync(deviceInputB[(cur-1)%N_STREAMS], pinnedHostInput2+(cur-1)*CHUNK_SIZE, CHUNK_SIZE*sizeof(float), cudaMemcpyHostToDevice, streams[(cur-1)%N_STREAMS]));
         wbCheck(cudaMemcpyAsync(deviceInputA[(cur-0)%N_STREAMS], pinnedHostInput1+(cur-0)*CHUNK_SIZE, CHUNK_SIZE*sizeof(float), cudaMemcpyHostToDevice, streams[(cur-0)%N_STREAMS]));
         cur++;
@@ -136,8 +136,8 @@ int main(int argc, char ** argv) {
         for(;cur<inputLength/CHUNK_SIZE; cur++)
         {
 
-            wbCheck(cudaMemcpyAsync(pinnedHostOutput+(cur-3)*CHUNK_SIZE, deviceOutput[(cur-3)%N_DEVICES], CHUNK_SIZE*sizeof(float), cudaMemcpyDeviceToHost, streams[(cur-3)%N_STREAMS]));
-            vecAdd<<<DimGrid, DimBlock, 0, streams[(cur-2)%N_STREAMS]>>>(deviceInputA0, deviceInputB0, deviceOutput0, CHUNK_SIZE);
+            wbCheck(cudaMemcpyAsync(pinnedHostOutput+(cur-3)*CHUNK_SIZE, deviceOutput[(cur-3)%N_STREAMS], CHUNK_SIZE*sizeof(float), cudaMemcpyDeviceToHost, streams[(cur-3)%N_STREAMS]));
+            vecAdd<<<DimGrid, DimBlock, 0, streams[(cur-2)%N_STREAMS]>>>(deviceInputA[(cur-2)%N_STREAMS], deviceInputB[(cur-2)%N_STREAMS], deviceOutput[(cur-2)%N_STREAMS], CHUNK_SIZE);
             wbCheck(cudaMemcpyAsync(deviceInputB[(cur-1)%N_STREAMS], pinnedHostInput2+(cur-1)*CHUNK_SIZE, CHUNK_SIZE*sizeof(float), cudaMemcpyHostToDevice, streams[(cur-1)%N_STREAMS]));
 
             left = min(inputLength-(cur*CHUNK_SIZE), CHUNK_SIZE);
@@ -147,29 +147,29 @@ int main(int argc, char ** argv) {
 
         // empty the pipe -- this will take 3 steps too (just like filling it)
         // empty step 1
-        wbCheck(cudaMemcpyAsync(pinnedHostOutput+(cur-3)*CHUNK_SIZE, deviceOutput[(cur-3)%N_DEVICES], CHUNK_SIZE*sizeof(float), cudaMemcpyDeviceToHost, streams[(cur-3)%N_STREAMS]));
-        vecAdd<<<DimGrid, DimBlock, 0, streams[(cur-2)%N_STREAMS]>>>(deviceInputA0, deviceInputB0, deviceOutput0, CHUNK_SIZE);
+        wbCheck(cudaMemcpyAsync(pinnedHostOutput+(cur-3)*CHUNK_SIZE, deviceOutput[(cur-3)%N_STREAMS], CHUNK_SIZE*sizeof(float), cudaMemcpyDeviceToHost, streams[(cur-3)%N_STREAMS]));
+        vecAdd<<<DimGrid, DimBlock, 0, streams[(cur-2)%N_STREAMS]>>>(deviceInputA[(cur-2)%N_STREAMS], deviceInputB[(cur-2)%N_STREAMS], deviceOutput[(cur-2)%N_STREAMS], CHUNK_SIZE);
         wbCheck(cudaMemcpyAsync(deviceInputB[(cur-1)%N_STREAMS], pinnedHostInput2+(cur-1)*CHUNK_SIZE, left*sizeof(float), cudaMemcpyHostToDevice, streams[(cur-1)%N_STREAMS]));
         cur++;
 
         // empty step 2
         DimGrid.x = 1 + (left-1)/BLOCK_SIZE;
-        wbCheck(cudaMemcpyAsync(pinnedHostOutput+(cur-3)*CHUNK_SIZE, deviceOutput[(cur-3)%N_DEVICES], CHUNK_SIZE*sizeof(float), cudaMemcpyDeviceToHost, streams[(cur-3)%N_STREAMS]));
-        vecAdd<<<DimGrid, DimBlock, 0, streams[(cur-2)%N_STREAMS]>>>(deviceInputA0, deviceInputB0, deviceOutput0, left);
+        wbCheck(cudaMemcpyAsync(pinnedHostOutput+(cur-3)*CHUNK_SIZE, deviceOutput[(cur-3)%N_STREAMS], CHUNK_SIZE*sizeof(float), cudaMemcpyDeviceToHost, streams[(cur-3)%N_STREAMS]));
+        vecAdd<<<DimGrid, DimBlock, 0, streams[(cur-2)%N_STREAMS]>>>(deviceInputA[(cur-2)%N_STREAMS], deviceInputB[(cur-2)%N_STREAMS], deviceOutput[(cur-2)%N_STREAMS], left);
         cur++;
 
         // empty step 3
-        wbCheck(cudaMemcpyAsync(pinnedHostOutput+(cur-3)*CHUNK_SIZE, deviceOutput[(cur-3)%N_DEVICES], left*sizeof(float), cudaMemcpyDeviceToHost, streams[(cur-3)%N_STREAMS]));
+        wbCheck(cudaMemcpyAsync(pinnedHostOutput+(cur-3)*CHUNK_SIZE, deviceOutput[(cur-3)%N_STREAMS], left*sizeof(float), cudaMemcpyDeviceToHost, streams[(cur-3)%N_STREAMS]));
         cur++;
     }
 
 	wbTime_stop(Generic, "Queuing items to streams.");
 
 	wbTime_start(Generic, "Synchronizing for streams.");
-    wbCheck(cudaStreamSynchronize(stream0));
-    wbCheck(cudaStreamSynchronize(stream1));
-    wbCheck(cudaStreamSynchronize(stream2));
-    wbCheck(cudaStreamSynchronize(stream3));
+    for(int i=0;i<N_STREAMS;i++)
+    {
+        wbCheck(cudaStreamSynchronize(streams[i]));
+    }
 	wbTime_stop(Generic, "Synchronizing for streams.");
 
 	wbTime_stop(GPU, "Running steams.");
@@ -182,7 +182,7 @@ int main(int argc, char ** argv) {
     wbCheck(cudaFreeHost(pinnedHostInput2));
     wbCheck(cudaFreeHost(pinnedHostOutput));
 
-    for(i=0;i<N_STREAMS;i++)
+    for(int i=0;i<N_STREAMS;i++)
     {
         wbCheck(cudaStreamDestroy(streams[i]));
         wbCheck(cudaFree(deviceInputA[i]));
