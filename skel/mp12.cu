@@ -1,8 +1,9 @@
 #include	<wb.h>
 
-#define CHUNK_SIZE   64
-#define BLOCK_SIZE   16
-#define N_STREAMS     4
+#define CHUNK_SIZE   1024
+#define BLOCK_SIZE    128
+
+#define N_STREAMS       4
 
 #define wbCheck(stmt) do {                                                    \
         cudaError_t err = stmt;                                               \
@@ -91,7 +92,7 @@ int main(int argc, char ** argv) {
 	wbTime_start(Generic, "Queuing items to streams.");
 	wbTime_start(GPU, "Running steams.");
 
-    if (inputLength/CHUNK_SIZE < 4)
+    if ((inputLength+CHUNK_SIZE-1)/CHUNK_SIZE < N_STREAMS)
     {
         // if there are not 4 iterations worth of work, just queue it all on a single stream -- there isn't enough work
         // to fill the pipeline, so it doesn't really matter how efficiently we do it
@@ -133,7 +134,7 @@ int main(int argc, char ** argv) {
         cur++;
 
         // now the pipe if full, run the loop
-        for(;cur<inputLength/CHUNK_SIZE; cur++)
+        for(;cur<(inputLength+CHUNK_SIZE-1)/CHUNK_SIZE; cur++)
         {
 
             wbCheck(cudaMemcpyAsync(pinnedHostOutput+(cur-3)*CHUNK_SIZE, deviceOutput[(cur-3)%N_STREAMS], CHUNK_SIZE*sizeof(float), cudaMemcpyDeviceToHost, streams[(cur-3)%N_STREAMS]));
