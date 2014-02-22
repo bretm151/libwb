@@ -76,14 +76,14 @@ int main(int argc, char ** argv) {
     memcpy(pinnedHostInput2, hostInput2, inputLength*sizeof(float));
 
     /*
-     * Now the fun begins.  This code assumes that the GPU is capable of running 2 inbound copies, a kernel and an outbound kernel
+     * Now the fun begins.  This code assumes that the GPU is capable of running 2 inbound copies, a kernel and an outbound copy
      * in parallel. 
      * 
      * This requires 4 streams, and in the steady state it is running:
      * - the copyout from iteration      n-3
      * - the kernel from iteration       n-2
-     * - the copyin of A for  iteration  n-1
-     * - the copyin of B for  iteration  n-0
+     * - the copyin of B for  iteration  n-1
+     * - the copyin of A for  iteration  n-0
      * 
      * In order for this to work, we have to "prime the pump" with almost 3 full 
      * iterantions
