@@ -22,7 +22,7 @@ then
 fi
 
 case ${MP} in
-    0|1|5)
+    0|1|5|6|8|9)
         TYPE=vector
         ;;
     2|3)
