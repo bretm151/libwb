@@ -5,7 +5,7 @@
 #define wbCheck(error) do {                                \
         if (error != CL_SUCCESS) {                         \
             wbLog(ERROR, "error = ", error);               \
-            return  1;                                     \
+            return error;                                  \
         }                                                  \
     } while(0)
 
@@ -23,6 +23,59 @@ const char *vaddSrc[] =
     "}"
 }
 ;
+
+cl_int
+displayPlatformInfo(cl_platform_id id, cl_platform_info name, char *pLabel)
+{
+    cl_int clError;
+    size_t paramValueSize;
+
+    clError = clGetPlatformInfo(id, name, 0, NULL, &paramValueSize);
+    wbCheck(clError);
+
+    char *pInfo = (char *)alloca(sizeof(char) * paramValueSize);
+
+    clError = clGetPlatformInfo(id, name, paramValueSize, pInfo, NULL);
+    wbCheck(clError);
+
+    printf("\t%s %s\n", pLabel, pInfo);
+
+    return CL_SUCCESS;
+}
+
+cl_int
+displayPlatform(cl_platform_id id)
+{
+    cl_int clError;
+
+    clError = displayPlatformInfo(id, CL_PLATFORM_PROFILE, "CL_PLATFORM_PROFILE");
+    wbCheck(clError);
+
+    clError = displayPlatformInfo(id, CL_PLATFORM_VERSION, "CL_PLATFORM_VERSION");
+    wbCheck(clError);
+
+    clError = displayPlatformInfo(id, CL_PLATFORM_VENDOR, "CL_PLATFORM_VENDOR");
+    wbCheck(clError);
+
+    clError = displayPlatformInfo(id, CL_PLATFORM_EXTENSIONS, "CL_PLATFORM_EXTENSIONS");
+    wbCheck(clError);
+
+    return CL_SUCCESS;
+}
+
+cl_int
+displayPlatforms(cl_platform_id *pPlatforms, int nPlatforms)
+{
+    cl_int clError;
+
+    for(int i=0;i<nPlatforms;i++)
+    {
+        clError = displayPlatform(pPlatforms[i]);
+        wbCheck(clError);
+    }
+
+    return CL_SUCCESS;
+}
 
 int main(int argc, char **argv) {
     wbArg_t args;
@@ -59,16 +112,19 @@ int main(int argc, char **argv) {
         0
     };
 
+    clError = displayPlatforms(clPlatforms, clNumPlatforms);
+    wbCheck(clError);
+
     cl_context clContext = clCreateContextFromType(clContextProperties, CL_DEVICE_TYPE_ALL, NULL, NULL, &clError);
     wbCheck(clError);
 
-    size_t clNumDevices;
-    clError = clGetContextInfo(clContext, CL_CONTEXT_DEVICES, 0, NULL, &clNumDevices);
+    size_t clSizeDevices;
+    clError = clGetContextInfo(clContext, CL_CONTEXT_DEVICES, 0, NULL, &clSizeDevices);
     wbCheck(clError);
 
-    cl_device_id* cldevs = (cl_device_id *)alloca(clNumDevices*sizeof(cl_device_id));
+    cl_device_id* cldevs = (cl_device_id *)alloca(clSizeDevices);
 
-    clError = clGetContextInfo(clContext, CL_CONTEXT_DEVICES, clNumDevices, cldevs, NULL);
+    clError = clGetContextInfo(clContext, CL_CONTEXT_DEVICES, clSizeDevices, cldevs, NULL);
     wbCheck(clError);
 
     cl_command_queue clQueue = clCreateCommandQueue(clContext, cldevs[0], 0, &clError);
